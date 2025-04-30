@@ -90,5 +90,5 @@ This project is licensed under the MIT License.
 
 📬 Contact
 For inquiries or academic collaboration:
-📧 Ammaidsahu8"gmail.com
+📧 Ammaidsahu8@gmail.com
 🏫 Cyber Security , FCSE , GIKI
