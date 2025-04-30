@@ -1,10 +1,13 @@
 # gui.py
+
 import sys
 import threading
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QTabWidget, QVBoxLayout,
-    QTextEdit, QPushButton
+    QApplication, QWidget, QTabWidget, QVBoxLayout, QTextEdit,
+    QPushButton, QLabel, QHBoxLayout, QSizePolicy, QSpacerItem
 )
+from PyQt5.QtGui import QFont, QPalette, QColor
+from PyQt5.QtCore import Qt
 from usb_scanner import parse_usb_history
 from usb_monitor import start_usb_monitor
 from file_monitor import monitor_usb_drive
@@ -15,12 +18,66 @@ class USBForensicGUI(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("USB Forensic Tool")
-        self.setGeometry(200, 100, 800, 600)
+        self.setGeometry(200, 100, 950, 650)
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #1e1e2f;
+                color: #00d9ff;
+                font-family: Consolas;
+                font-size: 14px;
+            }
+            QLabel#welcomeLabel {
+                font-size: 28px;
+                font-weight: bold;
+                color: #00e0ff;
+                margin-bottom: 20px;
+            }
+            QPushButton {
+                background-color: #00e0ff;
+                color: #0a0a0a;
+                font-weight: bold;
+                padding: 14px;
+                border-radius: 10px;
+                font-size: 15px;
+                min-width: 240px;
+            }
+            QPushButton:hover {
+                background-color: #009db3;
+                color: #ffffff;
+            }
+            QTextEdit {
+                background-color: #101020;
+                color: #00ffcc;
+                border: 2px solid #00e0ff;
+                font-family: Consolas;
+                font-size: 13px;
+            }
+            QTabWidget::pane {
+                border: 2px solid #00e0ff;
+            }
+            QTabBar::tab {
+                background: #292949;
+                padding: 10px;
+                color: #00e0ff;
+                font-weight: bold;
+            }
+            QTabBar::tab:selected {
+                background: #00e0ff;
+                color: #0a0a0a;
+            }
+        """)
+
         self.layout = QVBoxLayout()
 
-        self.tabs = QTabWidget()
+        # Welcome Note
+        welcome = QLabel("🕵️‍♂️ Welcome to USB Forensic Tool")
+        welcome.setObjectName("welcomeLabel")
+        welcome.setAlignment(Qt.AlignCenter)
+        welcome.setFont(QFont("Consolas", 24, QFont.Bold))
+        self.layout.addWidget(welcome)
 
         # Tabs
+        self.tabs = QTabWidget()
         self.history_tab = QWidget()
         self.live_tab = QWidget()
         self.transfer_tab = QWidget()
@@ -42,23 +99,29 @@ class USBForensicGUI(QWidget):
         self.history_output = QTextEdit()
         self.history_output.setReadOnly(True)
 
-        scan_btn = QPushButton("Scan USB History")
-        report_btn = QPushButton("Export PDF Report")
-
+        # Centered Buttons
+        button_layout = QHBoxLayout()
+        scan_btn = QPushButton("🔍 Scan USB History")
+        report_btn = QPushButton("📄 Export PDF Report")
         scan_btn.clicked.connect(self.show_usb_history)
         report_btn.clicked.connect(self.generate_report)
 
-        layout.addWidget(scan_btn)
-        layout.addWidget(report_btn)
-        layout.addWidget(self.history_output)
+        button_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        button_layout.addWidget(scan_btn)
+        button_layout.addWidget(report_btn)
+        button_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
 
+        layout.addLayout(button_layout)
+        layout.addWidget(self.history_output)
         self.history_tab.setLayout(layout)
 
     def show_usb_history(self):
         devices = parse_usb_history()
         self.history_output.clear()
         for d in devices:
-            self.history_output.append(f"Device: {d['Device']} | Serial: {d['Serial']} | Name: {d['FriendlyName']}")
+            self.history_output.append(
+                f"Device: {d['Device']} | Serial: {d['Serial']} | Name: {d['FriendlyName']}"
+            )
 
     def generate_report(self):
         data = parse_usb_history()
@@ -71,10 +134,19 @@ class USBForensicGUI(QWidget):
         self.live_output = QTextEdit()
         self.live_output.setReadOnly(True)
 
-        start_btn = QPushButton("Start Live Monitoring")
-        start_btn.clicked.connect(lambda: threading.Thread(target=start_usb_monitor, args=(self.append_live_log,), daemon=True).start())
+        button_layout = QHBoxLayout()
+        start_btn = QPushButton("⚡ Start Live Monitoring")
+        start_btn.clicked.connect(lambda: threading.Thread(
+            target=start_usb_monitor,
+            args=(self.append_live_log,),
+            daemon=True
+        ).start())
 
-        layout.addWidget(start_btn)
+        button_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        button_layout.addWidget(start_btn)
+        button_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
+
+        layout.addLayout(button_layout)
         layout.addWidget(self.live_output)
         self.live_tab.setLayout(layout)
 
@@ -87,10 +159,19 @@ class USBForensicGUI(QWidget):
         self.transfer_output = QTextEdit()
         self.transfer_output.setReadOnly(True)
 
-        start_btn = QPushButton("Start File Monitoring (Drive E:)")
-        start_btn.clicked.connect(lambda: threading.Thread(target=monitor_usb_drive, args=("E", self.append_transfer_log), daemon=True).start())
+        button_layout = QHBoxLayout()
+        start_btn = QPushButton("📁 Monitor File Transfers (Drive E:)")
+        start_btn.clicked.connect(lambda: threading.Thread(
+            target=monitor_usb_drive,
+            args=("E", self.append_transfer_log),
+            daemon=True
+        ).start())
 
-        layout.addWidget(start_btn)
+        button_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        button_layout.addWidget(start_btn)
+        button_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
+
+        layout.addLayout(button_layout)
         layout.addWidget(self.transfer_output)
         self.transfer_tab.setLayout(layout)
 

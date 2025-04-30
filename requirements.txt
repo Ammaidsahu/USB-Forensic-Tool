@@ -3,3 +3,4 @@ watchdog
 python-registry
 regipy
 reportlab
+PyQt5
