@@ -1,333 +1,263 @@
 import sys
-import threading
+import time
+import logging
+import hashlib
+import os
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QTabWidget, QVBoxLayout,
-    QTextEdit, QPushButton, QLabel, QHBoxLayout,
-    QStatusBar, QMessageBox
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton,
+    QScrollArea, QTextEdit, QStackedWidget, QSizePolicy, QProgressBar, QMessageBox
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from PyQt5.QtGui import QFont, QColor
-from usb_scanner import USBForensicScanner
-from usb_monitor import start_usb_monitoring
-from file_monitor import start_file_monitoring
-from report_generator import generate_pdf
-from database import USBForensicDB
-from alert_system import AlertSystem
+from PyQt5.QtGui import QIcon, QPixmap, QFont
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import wmi
 
-class LogEmitter(QObject):
-    log_signal = pyqtSignal(str)
-    alert_signal = pyqtSignal(str, str)  # (title, message)
+# Configure logging
+logging.basicConfig(filename='usb_forensic_tool.log', level=logging.DEBUG)
+
+class USBFileHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+        logging.info(f'File modified: {event.src_path}')
+        print(f'File modified: {event.src_path}')
+
+    def on_created(self, event):
+        if event.is_directory:
+            return
+        logging.info(f'File created: {event.src_path}')
+        print(f'File created: {event.src_path}')
+
+    def on_deleted(self, event):
+        if event.is_directory:
+            return
+        logging.info(f'File deleted: {event.src_path}')
+        print(f'File deleted: {event.src_path}')
+
+class MonitorThread(QThread):
     progress_signal = pyqtSignal(int)
 
-class USBForensicGUI(QWidget):
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+        self.running = True
+
+    def run(self):
+        event_handler = USBFileHandler()
+        observer = Observer()
+        observer.schedule(event_handler, self.path, recursive=True)
+        observer.start()
+        while self.running:
+            time.sleep(1)
+        observer.stop()
+        observer.join()
+
+    def stop(self):
+        self.running = False
+
+class USBMonitor:
+    def __init__(self, callback):
+        self.callback = callback
+
+    def start(self):
+        # Simulating USB connection and removal detection
+        # This would be replaced with actual monitoring code
+        self.callback("connected", "D:")
+        time.sleep(2)
+        self.callback("removed", "D:")
+
+class USBFileMonitor(QThread):
+    def __init__(self, path, callback):
+        super().__init__()
+        self.path = path
+        self.callback = callback
+
+    def run(self):
+        # Simulate file monitoring (replace with actual file system event monitoring)
+        time.sleep(1)
+        self.callback("created", "file1.txt")
+
+class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("USB Forensic Tool")
-        self.setGeometry(200, 100, 1000, 700)
-        self.scanner = USBForensicScanner()
-        self.db = USBForensicDB()
-        self.emitter = LogEmitter()
-        self.monitoring_active = False
-        self.file_monitoring_active = False
-        
-        self.setup_ui()
-        self.connect_signals()
+        self.setGeometry(100, 100, 900, 600)
+        self.setStyleSheet("background-color: #0F111A; color: white;")
 
-    def setup_ui(self):
-        self.setStyleSheet("""
-            background-color: #1a1a2e;
-            color: cyan;
-            font-family: Consolas;
-        """)
-        
-        # Main layout
+        self.central_widget = QStackedWidget()
+        self.setCentralWidget(self.central_widget)
+
+        self.home_widget = self.create_home_page()
+        self.central_widget.addWidget(self.home_widget)
+
+    def create_home_page(self):
+        home = QWidget()
         layout = QVBoxLayout()
-        
-        # Header
-        header = QLabel("🕵️‍♂️ USB Forensic Tool")
-        header.setAlignment(Qt.AlignCenter)
-        header.setStyleSheet("""
-            font-size: 28px;
-            font-weight: bold;
-            color: cyan;
-            margin-bottom: 15px;
-        """)
-        layout.addWidget(header)
+        layout.setAlignment(Qt.AlignCenter)
 
-        # Tabs
-        self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane { border: 2px solid cyan; }
-            QTabBar::tab {
-                background: #16213e;
-                color: cyan;
-                padding: 10px;
-                font-size: 16px;
-            }
-            QTabBar::tab:selected {
-                background: #0f3460;
+        icon_label = QLabel()
+        icon = QPixmap("assets/usb_icon.png").scaled(120, 120, Qt.KeepAspectRatio)
+        icon_label.setPixmap(icon)
+        icon_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(icon_label)
+
+        welcome_label = QLabel("\U0001F50D Welcome to the USB Forensic Tool")
+        welcome_label.setFont(QFont("Arial", 20, QFont.Bold))
+        welcome_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(welcome_label)
+
+        layout.addSpacing(30)
+
+        button_font = QFont("Arial", 14, QFont.Bold)
+        button_style = """
+            QPushButton {
+                background-color: #1F2235;
+                color: white;
+                padding: 15px;
+                border-radius: 10px;
                 font-weight: bold;
             }
-        """)
-
-        self.setup_history_tab()
-        self.setup_live_tab()
-        self.setup_transfer_tab()
-
-        layout.addWidget(self.tabs)
-        
-        # Status bar
-        self.status_bar = QStatusBar()
-        self.status_bar.setStyleSheet("""
-            background: #1e1e2d;
-            color: #a0a0c0;
-            padding: 5px;
-            font-size: 12px;
-        """)
-        layout.addWidget(self.status_bar)
-        
-        self.setLayout(layout)
-
-    def setup_history_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout()
-
-        self.history_output = QTextEdit()
-        self.history_output.setReadOnly(True)
-        self.history_output.setStyleSheet("""
-            font-family: Consolas;
-            font-size: 14px;
-            background-color: #0f0f1a;
-            color: white;
-            border: 1px solid #2b7bba;
-            border-radius: 4px;
-        """)
-
-        btn_layout = QHBoxLayout()
-        
-        scan_btn = QPushButton("🔍 Scan USB History")
-        report_btn = QPushButton("📄 Generate PDF Report")
-        clear_btn = QPushButton("🗑️ Clear Log")
-        
-        for btn in (scan_btn, report_btn, clear_btn):
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #0f3460;
-                    color: white;
-                    padding: 8px 15px;
-                    font-size: 14px;
-                    border-radius: 4px;
-                    border: none;
-                }
-                QPushButton:hover {
-                    background-color: #3a8cca;
-                }
-            """)
-            btn.setCursor(Qt.PointingHandCursor)
-
-        scan_btn.clicked.connect(self.scan_usb_history)
-        report_btn.clicked.connect(self.generate_report)
-        clear_btn.clicked.connect(self.history_output.clear)
-
-        btn_layout.addWidget(scan_btn)
-        btn_layout.addWidget(report_btn)
-        btn_layout.addWidget(clear_btn)
-        layout.addLayout(btn_layout)
-        layout.addWidget(self.history_output)
-        tab.setLayout(layout)
-        self.tabs.addTab(tab, "USB History")
-
-    def setup_live_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout()
-
-        self.live_output = QTextEdit()
-        self.live_output.setReadOnly(True)
-        self.live_output.setStyleSheet("""
-            font-family: Consolas;
-            font-size: 14px;
-            background-color: #0f0f1a;
-            color: white;
-            border: 1px solid #2b7bba;
-            border-radius: 4px;
-        """)
-
-        self.monitor_btn = QPushButton("🔌 Start Live Monitoring")
-        self.monitor_btn.setCheckable(True)
-        self.monitor_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                padding: 8px 15px;
-                font-size: 14px;
-                border-radius: 4px;
-                border: none;
-            }
-            QPushButton:checked {
-                background-color: #c0392b;
-            }
             QPushButton:hover {
-                background-color: #2ecc71;
+                background-color: #343650;
             }
-            QPushButton:checked:hover {
-                background-color: #e74c3c;
-            }
-        """)
-        self.monitor_btn.clicked.connect(self.toggle_monitoring)
+        """
 
-        layout.addWidget(self.monitor_btn)
-        layout.addWidget(self.live_output)
-        tab.setLayout(layout)
-        self.tabs.addTab(tab, "Live Logging")
+        buttons = [
+            ("assets/history.png", "Scan USB History", self.show_usb_history),
+            ("assets/live.png", "USB Live Monitoring", self.show_live_monitor),
+            ("assets/hash.png", "Hash Calculator", self.show_hash_calculator),
+            ("assets/transfer.png", "File Transfer Monitor", self.show_file_transfer_monitor),
+        ]
 
-    def setup_transfer_tab(self):
-        tab = QWidget()
+        for icon_path, text, callback in buttons:
+            btn = QPushButton(f"  {text}")
+            btn.setFont(button_font)
+            btn.setStyleSheet(button_style)
+            btn.setIcon(QIcon(icon_path))
+            btn.setIconSize(QPixmap(icon_path).size())
+            btn.setMinimumHeight(60)
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            btn.clicked.connect(callback)
+            layout.addWidget(btn)
+            layout.addSpacing(10)
+
+        home.setLayout(layout)
+        return home
+
+    def show_usb_history(self):
+        history_widget = QWidget()
         layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignTop)
 
-        self.transfer_output = QTextEdit()
-        self.transfer_output.setReadOnly(True)
-        self.transfer_output.setStyleSheet("""
-            font-family: Consolas;
-            font-size: 14px;
-            background-color: #0f0f1a;
-            color: white;
-            border: 1px solid #2b7bba;
-            border-radius: 4px;
-        """)
+        title = QLabel("\U0001F9FE USB History Log")
+        title.setFont(QFont("Arial", 18, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
 
-        self.file_monitor_btn = QPushButton("📂 Start File Monitoring")
-        self.file_monitor_btn.setCheckable(True)
-        self.file_monitor_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                padding: 8px 15px;
-                font-size: 14px;
-                border-radius: 4px;
-                border: none;
-            }
-            QPushButton:checked {
-                background-color: #c0392b;
-            }
-            QPushButton:hover {
-                background-color: #2ecc71;
-            }
-            QPushButton:checked:hover {
-                background-color: #e74c3c;
-            }
-        """)
-        self.file_monitor_btn.clicked.connect(self.toggle_file_monitoring)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        content_layout = QVBoxLayout()
 
-        layout.addWidget(self.file_monitor_btn)
-        layout.addWidget(self.transfer_output)
-        tab.setLayout(layout)
-        self.tabs.addTab(tab, "File Transfers")
-
-    def connect_signals(self):
-        self.emitter.log_signal.connect(self.handle_log)
-        self.emitter.alert_signal.connect(self.show_alert)
-        self.emitter.progress_signal.connect(self.update_progress)
-
-    def handle_log(self, message):
-        if "USB" in message:  # Live monitoring messages
-            self.live_output.append(message)
-            self.live_output.ensureCursorVisible()
-        elif any(x in message for x in ["CREATED", "MODIFIED", "DELETED", "MOVED"]):  # File events
-            self.transfer_output.append(message)
-            self.transfer_output.ensureCursorVisible()
-        else:  # History messages
-            self.history_output.append(message)
-        
-        self.status_bar.showMessage(message[:100] + "..." if len(message) > 100 else message)
-
-    def show_alert(self, title, message):
-        QMessageBox.warning(self, title, message)
-
-    def update_progress(self, value):
-        self.status_bar.showMessage(f"Scanning... {value}%")
-
-    def scan_usb_history(self):
-        self.history_output.clear()
-        self.status_bar.showMessage("Scanning USB history...")
-        
-        # Run in separate thread to keep GUI responsive
-        threading.Thread(
-            target=self._perform_scan,
-            daemon=True
-        ).start()
-
-    def _perform_scan(self):
-        devices = self.scanner.get_usb_devices()
-        if not devices:
-            self.emitter.log_signal.emit("No USB devices found or access denied")
-            return
-            
-        for device in devices:
-            log_msg = (
-                f"Device: {device['FriendlyName']}\n"
-                f"├─ Serial: {device['Serial']}\n"
-                f"├─ Manufacturer: {device['Manufacturer']}\n"
-                f"├─ Last Connected: {device['LastConnectedTime']}\n"
-                f"└─ Detected via: {device.get('DetectionMethod', 'Unknown')}\n"
-            )
-            self.emitter.log_signal.emit(log_msg)
-        
-        self.emitter.log_signal.emit(f"\nFound {len(devices)} USB device(s)")
-        self.status_bar.showMessage("Scan completed")
-
-    def generate_report(self):
-        devices = self.scanner.get_usb_devices()
-        if devices:
-            generate_pdf(devices)
-            self.history_output.append("\n[✓] PDF report generated: usb_report.pdf")
+        usb_data = self.get_usb_history()
+        if not usb_data:
+            label = QLabel("No historical USB data found.")
+            label.setFont(QFont("Arial", 12))
+            content_layout.addWidget(label)
         else:
-            self.history_output.append("\n[!] No USB devices found to generate report")
+            for device in usb_data:
+                dev_box = QTextEdit()
+                dev_box.setFont(QFont("Consolas", 10))
+                dev_box.setReadOnly(True)
+                dev_box.setStyleSheet("background-color: #1E1E2F; color: white; border: 1px solid #555;")
+                dev_text = "\n".join([f"Device Name      : {device['Device Name']}",
+                                      f"Serial Number    : {device['Serial Number']}",
+                                      f"Manufacturer     : {device['Manufacturer']}",
+                                      f"Last Connected   : {device['Last Connected']}",
+                                      f"Capacity         : {device['Capacity']}",
+                                      f"MD5 Hash         : {device['Hash MD5']}",
+                                      f"SHA256 Hash      : {device['Hash SHA256']}"])
+                dev_box.setText(dev_text)
+                content_layout.addWidget(dev_box)
+                content_layout.addSpacing(10)
 
-    def toggle_monitoring(self):
-        if self.monitor_btn.isChecked():
-            self.monitoring_active = True
-            self.monitor_btn.setText("🛑 Stop Monitoring")
-            threading.Thread(
-                target=start_usb_monitoring,
-                args=(lambda msg: self.emitter.log_signal.emit(msg),),
-                daemon=True
-            ).start()
-        else:
-            self.monitoring_active = False
-            self.monitor_btn.setText("🔌 Start Monitoring")
+        pdf_btn = QPushButton("\U0001F4C4 Generate PDF Report")
+        pdf_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        pdf_btn.setStyleSheet("padding: 10px; background-color: #3C3F58;")
+        pdf_btn.clicked.connect(lambda: self.generate_pdf_report(usb_data))
+        content_layout.addWidget(pdf_btn)
 
-    def toggle_file_monitoring(self):
-        if self.file_monitor_btn.isChecked():
-            self.file_monitoring_active = True
-            self.file_monitor_btn.setText("🛑 Stop Monitoring")
-            threading.Thread(
-                target=start_file_monitoring,
-                args=(lambda msg: self.emitter.log_signal.emit(msg),),
-                daemon=True
-            ).start()
-        else:
-            self.file_monitoring_active = False
-            self.file_monitor_btn.setText("📂 Start Monitoring")
+        content.setLayout(content_layout)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
 
-def launch_gui():
-    app = QApplication(sys.argv)
-    
-    # Set dark theme palette
-    palette = app.palette()
-    palette.setColor(palette.Window, QColor(30, 30, 45))
-    palette.setColor(palette.WindowText, QColor(200, 200, 255))
-    palette.setColor(palette.Base, QColor(15, 15, 26))
-    palette.setColor(palette.AlternateBase, QColor(40, 40, 60))
-    palette.setColor(palette.Text, QColor(200, 200, 255))
-    palette.setColor(palette.Button, QColor(50, 50, 70))
-    palette.setColor(palette.ButtonText, QColor(200, 200, 255))
-    palette.setColor(palette.Highlight, QColor(43, 123, 186))
-    palette.setColor(palette.HighlightedText, Qt.white)
-    app.setPalette(palette)
-    
-    window = USBForensicGUI()
-    window.show()
-    sys.exit(app.exec_())
+        history_widget.setLayout(layout)
+        self.central_widget.addWidget(history_widget)
+        self.central_widget.setCurrentWidget(history_widget)
+
+    def get_usb_history(self):
+        # Replace with actual USB history fetching logic
+        return [{"Device Name": "USB Drive 1", "Serial Number": "123456", "Manufacturer": "Manufacturer A", "Last Connected": "2025-05-01", "Capacity": "64GB", "Hash MD5": "abcd1234", "Hash SHA256": "abcd1234567890"}]
+
+    def generate_pdf_report(self, usb_data):
+        filename = "usb_history_report.pdf"
+        c = canvas.Canvas(filename, pagesize=letter)
+        c.drawString(100, 750, "USB Forensic Report")
+        c.drawString(100, 730, "USB history log generated.")
+        c.save()
+
+        logging.info(f"PDF report generated: {filename}")
+        QMessageBox.information(self, "Report Generated", f"PDF report saved as {filename}.")
+
+    def show_live_monitor(self):
+        self.live_monitor_widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignTop)
+
+        title = QLabel("\U0001F50C Live USB Monitoring")
+        title.setFont(QFont("Arial", 18, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        self.usb_activity_log = QTextEdit()
+        self.usb_activity_log.setReadOnly(True)
+        self.usb_activity_log.setStyleSheet("background-color: #1E1E2F; color: white;")
+        layout.addWidget(self.usb_activity_log)
+
+        self.live_monitor_widget.setLayout(layout)
+        self.central_widget.addWidget(self.live_monitor_widget)
+        self.central_widget.setCurrentWidget(self.live_monitor_widget)
+
+        self.start_usb_monitoring()
+
+    def start_usb_monitoring(self):
+        def usb_callback(event_type, drive):
+            if event_type == "connected":
+                self.usb_activity_log.append(f"\u2705 USB Connected: {drive}")
+            elif event_type == "removed":
+                self.usb_activity_log.append(f"\u274C USB Removed: {drive}")
+
+        self.usb_monitor = USBMonitor(usb_callback)
+        self.usb_monitor.start()
+
+    def show_hash_calculator(self):
+        print("Show Hash Calculator - To be implemented")
+
+    def show_file_transfer_monitor(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+        label = QLabel("\U0001F4C2 File Transfer Monitor Interface")
+        label.setFont(QFont("Arial", 14))
+        label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(label)
+        widget.setLayout(layout)
+        self.setCentralWidget(widget)
 
 if __name__ == "__main__":
-    launch_gui()
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())

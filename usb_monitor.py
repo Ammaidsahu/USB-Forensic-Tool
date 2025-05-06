@@ -1,57 +1,84 @@
+import psutil
+import hashlib
 import time
-import win32file
-import winreg
-from database import USBForensicDB
-from alert_system import AlertSystem
+import platform
+import subprocess
+import os
+import threading
 
-active_usb_map = {}
-db = USBForensicDB()
-alert_system = AlertSystem()  # Initialize with Gmail config
+class USBMonitor:
+    def __init__(self, callback=None):
+        self.callback = callback
+        self.running = False
+        self.previous_devices = {}
 
-def start_usb_monitoring(log_callback):
-    while True:
+    def list_usb_devices(self):
+        devices = {}
+        partitions = psutil.disk_partitions()
+        for p in partitions:
+            if 'removable' in p.opts or ('/media' in p.mountpoint or '/run/media' in p.mountpoint):
+                usage = psutil.disk_usage(p.mountpoint)
+                capacity = f"{round(usage.total / (1024**3), 2)} GB"
+                hash_md5, hash_sha256 = self.compute_hashes(p.mountpoint)
+                serial, manufacturer = self.get_usb_info(p.device)
+                devices[p.device] = {
+                    'device': p.device,
+                    'mountpoint': p.mountpoint,
+                    'capacity': capacity,
+                    'md5': hash_md5,
+                    'sha256': hash_sha256,
+                    'serial': serial,
+                    'manufacturer': manufacturer
+                }
+        return devices
+
+    def get_usb_info(self, device):
+        if platform.system() == "Windows":
+            try:
+                cmd = f"wmic diskdrive where InterfaceType='USB' get SerialNumber, Manufacturer /format:list"
+                output = subprocess.check_output(cmd, shell=True).decode()
+                serial = ""
+                manufacturer = ""
+                for line in output.splitlines():
+                    if "SerialNumber" in line:
+                        serial = line.split("=")[1].strip()
+                    if "Manufacturer" in line:
+                        manufacturer = line.split("=")[1].strip()
+                return serial, manufacturer
+            except Exception as e:
+                print(f"Error: {e}")
+                return "", ""
+        return "", ""
+
+    def compute_hashes(self, path):
+        md5 = hashlib.md5()
+        sha256 = hashlib.sha256()
         try:
-            current_drives = get_removable_drives()
-            
-            # Check for new drives
-            for drive in current_drives:
-                if drive not in active_usb_map:
-                    serial = get_device_serial(drive[0])
-                    active_usb_map[drive] = serial
-                    log_msg = f"[+] USB inserted: {drive} (Serial: {serial})"
-                    log_callback(log_msg)
-                    db.log_device(serial, "Unknown")
-                    alert_system.check_new_device(serial)
+            for root, dirs, files in os.walk(path):
+                for f in files:
+                    full_path = os.path.join(root, f)
+                    with open(full_path, 'rb') as file:
+                        while chunk := file.read(4096):
+                            md5.update(chunk)
+                            sha256.update(chunk)
+        except:
+            return "Error", "Error"
+        return md5.hexdigest(), sha256.hexdigest()
 
-            # Check removed drives
-            for drive in list(active_usb_map.keys()):
-                if drive not in current_drives:
-                    log_callback(f"[-] USB removed: {drive}")
-                    del active_usb_map[drive]
+    def start(self):
+        self.running = True
+        threading.Thread(target=self.monitor_loop, daemon=True).start()
 
-            time.sleep(1)
-        except Exception as e:
-            log_callback(f"[USB Monitor Error] {str(e)}")
-            time.sleep(5)
+    def stop(self):
+        self.running = False
 
-def get_removable_drives():
-    drives = []
-    try:
-        drive_bits = win32file.GetLogicalDrives()
-        for i in range(26):
-            if drive_bits & (1 << i):
-                drive_letter = f"{chr(65 + i)}:"
-                if win32file.GetDriveType(f"{drive_letter}\\") == win32file.DRIVE_REMOVABLE:
-                    drives.append(drive_letter)
-    except Exception as e:
-        print(f"Drive detection error: {e}")
-    return drives
+    def monitor_loop(self):
+        while self.running:
+            devices = self.list_usb_devices()
+            if devices != self.previous_devices:
+                self.previous_devices = devices
+                if self.callback:
+                    for device, info in devices.items():
+                        self.callback("connected", info)  # Trigger callback for new device
+            time.sleep(3)
 
-def get_device_serial(drive_letter):
-    try:
-        reg = winreg.ConnectRegistry(None, winreg.HKEY_LOCAL_MACHINE)
-        key = winreg.OpenKey(reg, r"SYSTEM\MountedDevices")
-        value = winreg.QueryValueEx(key, f"\\DosDevices\\{drive_letter}:")[0]
-        return value.hex()[-20:]  # Extract last 20 chars as pseudo-serial
-    except:
-        return "UNKNOWN"
