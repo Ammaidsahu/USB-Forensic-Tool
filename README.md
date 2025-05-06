@@ -1,94 +1,110 @@
-# 🔍 USB Forensic Tool
+🔍 USB Forensic Tool
+A modern USB Forensic Tool developed by final-year Computer Engineering students to monitor USB activity in real time, retrieve complete device metadata, track file transfers, calculate file hashes, and generate NIST-compliant forensic reports. Built using PyQt5 with a sleek digital forensics-themed interface, this tool is ideal for investigators, forensic analysts, and cybersecurity researchers.
 
-A lightweight and efficient USB Forensic Tool developed by final-year computer engineering students to extract USB device metadata, monitor live USB events, track file transfers, and generate investigation-ready reports. Ideal for digital forensics analysts and cybersecurity researchers.
+📌 Features
+🔌 Detect all USB and external storage devices connected to the system
 
----
+🕵️ Retrieve device metadata: Serial Number, Manufacturer, Vendor ID, Capacity, First/Last Seen
 
-## 📌 Features
+⚙️ Live monitoring of USB insertions/removals
 
-- 🔌 Detect all USB devices ever connected to the system
-- 🕵️ Retrieve metadata: Serial Number, Manufacturer, Last Connected Time
-- ⚙️ Live USB connection/disconnection monitoring
-- 📂 Detect real-time file transfers to/from USB
-- 📝 Export forensic findings as a detailed PDF report
-- 🧑‍💻 Easy-to-use graphical interface using Tkinter
+📂 Real-time tracking of file creation, deletion, and transfers on USB drives
 
----
+🧮 File hash calculation using MD5 and SHA-256
 
-## 🖥️ System Requirements
+📝 Generate detailed PDF reports for digital investigations
 
-- **Operating System:** Windows 10 or later
-- **Python Version:** Python 3.8+
-- **Admin Rights:** Required to access Windows registry
+🖥️ Professional GUI built with PyQt5
 
----
+🔁 Runs silently in the background on system startup (auto-run feature)
 
-## 🧰 Tools & Libraries Used
+🖥️ System Requirements
+Operating System: Windows 10 or later (Admin rights required)
 
-| Purpose               | Tool/Library         |
-|----------------------|----------------------|
-| Programming Language | Python 3             |
-| GUI Interface        | Tkinter              |
-| Registry Parsing     | python-registry, regipy |
-| USB Event Monitor    | pywin32              |
-| File Monitoring      | watchdog             |
-| Report Generation    | reportlab            |
+Python Version: Python 3.8+
+
+Permissions: Admin privileges for registry and file system monitoring
+
+🧰 Tools & Libraries Used
+Purpose	Tool/Library
+Programming Language	Python 3
+GUI Framework	PyQt5
+USB Device Metadata	pyudev, winreg, wmi
+Real-Time Monitoring	watchdog, pywin32
+Report Generation	reportlab
+Background Service	pywin32, winshell
+File Hashing	hashlib
+Database Logging	sqlite3
 
 Install required dependencies:
-```bash
-pip install pywin32 regipy python-registry watchdog reportlab
+pip install pyqt5 watchdog pywin32 wmi reportlab
 🗂️ Project Structure
-graphql
-Copy
-Edit
 USB_Forensic_Tool/
 │
-├── main.py                 # GUI and application controller
-├── usb_scanner.py          # Registry-based USB history extractor
-├── usb_monitor.py          # Real-time USB connection detector
-├── file_monitor.py         # File transfer monitor for USB drives
-├── report_generator.py     # Generate detailed PDF reports
-├── database.db             # (Optional) Log event data in SQLite
-├── README.md               # Project documentation
-└── assets/                 # Icons, logos, or GUI elements
+├── main.py                 # App launcher
+├── gui.py                  # PyQt5 GUI code
+├── usb_monitor.py          # Detects USB insert/removal
+├── usb_history.py          # Scans registry for past USB devices
+├── file_monitor.py         # Monitors file operations on USB drives
+├── hash_utils.py           # Calculates MD5 and SHA256 of files
+├── report_generator.py     # Generates forensic PDF reports
+├── background_service.py   # Enables auto-start on system boot
+├── assets/                 # App icons and themed images
+├── database/usb_logs.db    # SQLite database for log storage
+├── config.py               # App configuration
+├── requirements.txt        # Dependencies list
+└── README.md               # Project documentation
 🚀 Getting Started
-Clone the repository
+📥 Clone the Repository
 git clone https://github.com/yourusername/usb-forensic-tool.git
 cd usb-forensic-tool
-Run the application
+▶️ Run the Application
 python main.py
-Use the GUI
-
-📌 Click "Scan USB History" to extract past USB device logs
-
-⚙️ Start monitoring real-time USB activity
-
-📂 Track file transfers to/from USB drives
-
-📝 Generate a professional PDF report
-
+🧭 GUI Guide
+Button / Tab	Description
+Live Logging	Starts real-time detection of USB plug/unplug and file actions
+USB History	Shows all previously connected USB devices with metadata
+File Transfers	Logs file creation, copy, delete events on USB
+Hash Calculator	Calculates and compares MD5/SHA256 file hashes
+Generate Report	Exports investigation log into a PDF document
 
 🧪 Testing
-
 Test Case	Expected Outcome
-Connect USB Device	Detected and listed in GUI
-File copied to USB	File path appears in monitor
-Report Generation	Creates a PDF with device + file logs
-Unplug USB	Event shown in live log
+Connect USB Device	Device is detected and shown in Live Log
+Copy file to/from USB	File path and action are logged
+Run USB History	Lists past connected USB devices with metadata
+Calculate Hash	Correct MD5/SHA256 hash values generated
+Generate Report	Creates downloadable PDF with evidence logs
+Remove USB Device	Disconnect event shown in GUI
+
 📈 Future Enhancements
-Cross-platform (Linux/macOS) support
+📊 Timeline view of USB events
 
-Timeline visualization of USB events
+🚨 Email/SMS alert on suspicious USB actions
 
-Hashing & integrity check of transferred files
+🔐 USB device blocking via admin panel
 
-Email alert on suspicious USB activity
+🧠 AI-based anomaly detection on file behavior
 
+🌐 Cloud syncing for remote investigation
 
 ⚖️ License
 This project is licensed under the MIT License.
+Use freely for research, education, or internal forensic investigation purposes.
 
 📬 Contact
-For inquiries or academic collaboration:
+For collaboration, issues, or academic inquiries:
+
 📧 Ammaidsahu8@gmail.com
-🏫 Cyber Security , FCSE , GIKI
+🏫 Cyber Security – FCSE, GIKI
+
+
+
+
+
+
+
+
+
+
+
