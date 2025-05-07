@@ -1,12 +1,12 @@
+# main.py
+
 from PyQt5.QtWidgets import QApplication
+from gui import ForensicMainWindow
 import sys
-from gui import MainWindow  # Import your MainWindow class
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setApplicationName("USB Forensic Tool")  # Setting application name
-    
-    window = MainWindow()
-    window.show()  # Show the main window
-    
-    sys.exit(app.exec_())  # Start the application event loop
+    app.setStyle("Fusion")
+    window = ForensicMainWindow()
+    window.show()
+    sys.exit(app.exec_())
